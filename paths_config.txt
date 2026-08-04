@@ -1,0 +1,4 @@
+D:\code\queryExecl\产品链接汇总表_模版.xlsx
+C:/Users/Administrator/Desktop/报表/店铺订单报表/6月/趣味猴推广5月1-31.xlsx|C:/Users/Administrator/Desktop/报表/店铺订单报表/6月/大咖猴推广5月1-31.xlsx|C:/Users/Administrator/Desktop/报表/店铺订单报表/6月/雅丽丹推广5月1-31.xlsx|C:/Users/Administrator/Desktop/报表/店铺订单报表/6月/庆余推广5月1-31.xlsx
+D:\code\queryExecl\官补映射表.xlsx
+D:\code\queryExecl\产品汇总表.xlsx
