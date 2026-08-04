@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📦 菜鸟库存管理系统</title>
+    <!-- 引入 Element UI 样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <style>
+        body { 
+            font-family: "Helvetica Neue",Helvetica,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","微软雅黑",Arial,sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f5f7fa; 
+        }
+        .el-header {
+            background-color: #fff;
+            color: #333;
+            line-height: 60px;
+            box-shadow: 0 2px 4px rgba(0,0,0,.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+        .el-aside {
+            background-color: #304156;
+            color: #fff;
+            min-height: 100vh;
+        }
+        .el-menu {
+            border-right: none;
+        }
+        .el-main {
+            background-color: #f0f2f5;
+            padding: 20px;
+        }
+        .brand-card .el-card__header {
+            padding: 8px 15px;
+            background-color: #fafafa;
+        }
+        /* 进一步缩小 mini 表格的内边距，使其更加紧凑 */
+        .el-table--mini td, .el-table--mini th {
+            padding: 4px 0;
+        }
+        
+        /* 移动端 (安卓/iOS) 响应式适配 */
+        .mobile-tab-bar {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: #fff;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .mobile-tab-bar .el-menu-item {
+            width: 50%;
+            text-align: center;
+            padding: 0 !important;
+        }
+        @media (max-width: 768px) {
+            .el-aside {
+                display: none; /* 手机端隐藏左侧菜单 */
+            }
+            .el-header {
+                flex-direction: column;
+                height: auto !important;
+                padding: 15px 10px;
+                line-height: normal;
+            }
+            .el-header > div {
+                margin-bottom: 10px;
+                width: 100%;
+                text-align: center;
+            }
+            .el-header .el-input {
+                width: calc(100% - 100px) !important;
+            }
+            .el-main {
+                padding: 10px;
+                padding-bottom: 70px; /* 留出底部导航栏的空间 */
+            }
+            .waterfall-container {
+                column-count: 1 !important; /* 手机端强制单列瀑布流 */
+            }
+            .mobile-tab-bar {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <el-container style="min-height: 100vh;">
+            <!-- 左侧菜单栏 (PC端) -->
+            <el-aside width="220px">
+                <div style="height: 60px; line-height: 60px; text-align: center; font-size: 18px; font-weight: bold; color: #fff; background-color: #2b3643;">
+                    📦 库存管理系统
+                </div>
+                <el-menu
+                    :default-active="activeMenu"
+                    background-color="#304156"
+                    text-color="#bfcbd9"
+                    active-text-color="#409EFF"
+                    @select="handleMenuSelect">
+                    <el-menu-item index="view">
+                        <i class="el-icon-data-board"></i>
+                        <span slot="title">查看库存</span>
+                    </el-menu-item>
+                    <el-menu-item index="config">
+                        <i class="el-icon-setting"></i>
+                        <span slot="title">库存配置</span>
+                    </el-menu-item>
+                </el-menu>
+            </el-aside>
+
+            <!-- 底部菜单栏 (移动端) -->
+            <el-menu
+                :default-active="activeMenu"
+                mode="horizontal"
+                class="mobile-tab-bar"
+                active-text-color="#409EFF"
+                @select="handleMenuSelect">
+                <el-menu-item index="view">
+                    <i class="el-icon-data-board"></i> 查库存
+                </el-menu-item>
+                <el-menu-item index="config">
+                    <i class="el-icon-setting"></i> 配商品
+                </el-menu-item>
+            </el-menu>
+
+            <el-container>
+                <!-- 顶部导航栏 -->
+                <el-header>
+                    <div style="font-size: 18px; font-weight: bold;">
+                        <span v-if="activeMenu === 'view'">查看库存看板 (按品牌分组)</span>
+                        <span v-else>库存商品配置</span>
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                        <el-input placeholder="请输入菜鸟平台 Cookie" v-model="cookie" size="small" style="width: 350px; margin-right: 10px;" show-password></el-input>
+                        <el-button type="primary" size="small" plain @click="saveCookie">保存 Cookie</el-button>
+                    </div>
+                </el-header>
+
+                <!-- 主体内容 -->
+                <el-main>
+                    <!-- 查看库存页面 -->
+                    <div v-show="activeMenu === 'view'">
+                        <el-card shadow="never" style="margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span style="font-size: 14px; margin-right: 10px; color: #606266;">排版设置 (品牌列数)：</span>
+                                    <el-radio-group v-model="itemsPerRow" size="small">
+                                        <el-radio-button :label="1">1列</el-radio-button>
+                                        <el-radio-button :label="2">2列</el-radio-button>
+                                        <el-radio-button :label="3">3列</el-radio-button>
+                                    </el-radio-group>
+                                </div>
+                                <div>
+                                    <el-button type="primary" icon="el-icon-refresh" @click="updateAll" :loading="loading">强制更新所有品牌</el-button>
+                                </div>
+                            </div>
+                        </el-card>
+
+                        <!-- 瀑布流布局：使用 CSS column-count 属性 -->
+                        <div class="waterfall-container" :style="{ columnCount: itemsPerRow, columnGap: '20px' }">
+                            <!-- 遍历分组后的数据 groupedConfigs -->
+                            <div v-for="(items, brand) in groupedConfigs" :key="brand" style="break-inside: avoid; margin-bottom: 20px; display: inline-block; width: 100%;">
+                                <el-card shadow="hover" class="brand-card" body-style="padding: 0;">
+                                    <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-weight: bold; font-size: 15px;">
+                                            <i class="el-icon-price-tag"></i> <span v-text="brand"></span>
+                                        </span>
+                                        <el-button type="primary" size="mini" plain @click="updateBrand(brand)">刷新该品牌</el-button>
+                                    </div>
+                                    
+                                    <!-- 品牌内产品以极紧凑(mini)表格展示 -->
+                                    <el-table :data="items" size="mini" style="width: 100%" stripe>
+                                        <el-table-column prop="name" label="商品名称" min-width="120" show-overflow-tooltip></el-table-column>
+                                        <el-table-column label="可用" align="center" width="55">
+                                            <template slot-scope="scope">
+                                                <span v-if="cache[scope.row.code]" :style="{ color: staleColor(scope.row.code, '#67C23A'), fontWeight: 'bold', opacity: isStale(scope.row.code) ? 0.6 : 1 }" v-text="cache[scope.row.code].availableQuantity"></span>
+                                                <span v-else>-</span>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column label="总数" align="center" width="55">
+                                            <template slot-scope="scope">
+                                                <span v-if="cache[scope.row.code]" :style="{ color: staleColor(scope.row.code, '#303133'), fontWeight: 'bold', opacity: isStale(scope.row.code) ? 0.5 : 1 }" v-text="cache[scope.row.code].goodQuantity"></span>
+                                                <span v-else>-</span>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column label="占用" align="center" width="55">
+                                            <template slot-scope="scope">
+                                                <span v-if="cache[scope.row.code]" :style="{ color: staleColor(scope.row.code, '#E6A23C'), fontWeight: 'bold', opacity: isStale(scope.row.code) ? 0.5 : 1 }" v-text="cache[scope.row.code].lockQuantity"></span>
+                                                <span v-else>-</span>
+                                            </template>
+                                        </el-table-column>
+                                        <!-- 新增：最近更新时间列 -->
+                                        <el-table-column label="更新时间" align="center" width="135">
+                                            <template slot-scope="scope">
+                                                <span v-if="cache[scope.row.code]" :style="{ fontSize: '12px', color: isStale(scope.row.code) ? '#c0c4cc' : '#606266', transform: 'scale(0.9)', display: 'inline-block' }" v-text="cache[scope.row.code].updateTime"></span>
+                                                <span v-else>-</span>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column label="操作" width="50" align="center">
+                                            <template slot-scope="scope">
+                                                <el-button size="mini" type="text" @click="updateSingle(scope.row.code, false)">刷新</el-button>
+                                            </template>
+                                        </el-table-column>
+                                    </el-table>
+                                </el-card>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 库存配置页面 -->
+                    <div v-show="activeMenu === 'config'">
+                        <el-card shadow="never">
+                            <div slot="header" class="clearfix">
+                                <span style="font-weight: bold; font-size: 16px;">商品库存核对配置</span>
+                                <el-button style="float: right; padding: 3px 0; margin-left: 15px;" type="primary" @click="openAddDialog">➕ 添加商品</el-button>
+                                <el-button style="float: right; padding: 3px 0;" type="success" @click="importDialogVisible = true">📥 批量导入 JSON</el-button>
+                            </div>
+                            
+                            <el-table :data="configs" border style="width: 100%" v-loading="loading">
+                                <el-table-column type="index" width="50" align="center"></el-table-column>
+                                <el-table-column prop="brand" label="品牌分组" width="150" align="center">
+                                    <template slot-scope="scope">
+                                        <el-tag size="small" type="info" v-text="scope.row.brand || '未分类'"></el-tag>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column prop="name" label="商品名称 (自定义)" min-width="250"></el-table-column>
+                                <el-table-column prop="code" label="商品条码 (itemParamCode)" width="200"></el-table-column>
+                                <el-table-column label="操作" width="180" align="center">
+                                    <template slot-scope="scope">
+                                        <el-button size="mini" type="primary" plain @click="openEditDialog(scope.$index, scope.row)">编辑</el-button>
+                                        <el-button size="mini" type="danger" plain @click="deleteConfig(scope.$index)">删除</el-button>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </el-card>
+                    </div>
+                </el-main>
+            </el-container>
+        </el-container>
+
+        <!-- 添加/编辑商品弹窗 -->
+        <el-dialog :title="editIndex === -1 ? '添加商品字段配置' : '编辑商品字段配置'" :visible.sync="dialogVisible" width="500px">
+            <el-form :model="form" label-width="100px" @submit.native.prevent>
+                <el-form-item label="品牌分组" required>
+                    <el-input v-model="form.brand" placeholder="例如：MoveFree、Dokkan..."></el-input>
+                </el-form-item>
+                <el-form-item label="商品名称" required>
+                    <el-input v-model="form.name" placeholder="例如：港版雅培金装..."></el-input>
+                </el-form-item>
+                <el-form-item label="商品条码" required>
+                    <el-input v-model="form.code" placeholder="例如：4891035065913" @keyup.enter.native="saveConfigForm"></el-input>
+                </el-form-item>
+            </el-form>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="dialogVisible = false">取 消</el-button>
+                <el-button type="primary" @click="saveConfigForm">确 定</el-button>
+            </span>
+        </el-dialog>
+
+        <!-- 批量导入 JSON 弹窗 -->
+        <el-dialog title="批量导入配置 (JSON格式)" :visible.sync="importDialogVisible" width="600px">
+            <el-alert title='请提供包含 brand, name, code 字段的 JSON 数组' type="info" show-icon style="margin-bottom: 10px;" :closable="false">
+                <div style="margin-top: 5px; font-family: monospace;">
+                    例如：<br>
+                    [<br>
+                    &nbsp;&nbsp;{ "brand": "MoveFree", "name": "益节绿瓶", "code": "4891035065913" },<br>
+                    &nbsp;&nbsp;{ "brand": "Dokkan", "name": "植物酵素", "code": "123456789" }<br>
+                    ]
+                </div>
+            </el-alert>
+            <el-input type="textarea" :rows="10" placeholder="在此粘贴你的 JSON 数组数据..." v-model="importJsonStr"></el-input>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="importDialogVisible = false">取 消</el-button>
+                <el-button type="primary" @click="confirmImport">确认导入</el-button>
+            </span>
+        </el-dialog>
+    </div>
+
+    <!-- 引入 Vue 2 CDN -->
+    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+    <!-- 引入 Element UI 组件库 CDN -->
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <!-- 引入 Axios 用于发送 HTTP 请求 -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                activeMenu: 'view',
+                cookie: '',
+                configs: [],
+                cache: {},
+                loading: false,
+                itemsPerRow: 2, // 默认每行显示2列品牌表格
+                dialogVisible: false,
+                importDialogVisible: false,
+                importJsonStr: '',
+                editIndex: -1,
+                form: {
+                    brand: '',
+                    name: '',
+                    code: ''
+                }
+            },
+            computed: {
+                // 根据品牌分组对配置进行聚合
+                groupedConfigs() {
+                    const groups = {};
+                    this.configs.forEach(item => {
+                        const b = item.brand || '未分类';
+                        if (!groups[b]) {
+                            groups[b] = [];
+                        }
+                        groups[b].push(item);
+                    });
+                    return groups;
+                }
+            },
+            mounted() {
+                this.loadCookie();
+                this.loadConfigs();
+            },
+            methods: {
+                // 判断缓存是否超过10分钟（过期变灰）
+                isStale(code) {
+                    const c = this.cache[code];
+                    if (!c || !c.updateTime) return true;
+                    try {
+                        const updated = new Date(c.updateTime.replace(/-/g, '/'));
+                        const diff = (Date.now() - updated.getTime()) / 1000 / 60;
+                        return diff > 10;
+                    } catch (e) {
+                        return true;
+                    }
+                },
+                // 根据是否过期返回颜色
+                staleColor(code, freshColor) {
+                    return this.isStale(code) ? '#c0c4cc' : freshColor;
+                },
+                handleMenuSelect(index) {
+                    this.activeMenu = index;
+                    if (index === 'view') {
+                        this.loadCacheAndAutoFetch();
+                    }
+                },
+                loadCookie() {
+                    axios.get('/api/cookie').then(res => {
+                        this.cookie = res.data.cookie;
+                    });
+                },
+                saveCookie() {
+                    axios.post('/api/cookie', { cookie: this.cookie }).then(res => {
+                        this.$message.success('Cookie 保存成功');
+                    });
+                },
+                loadConfigs() {
+                    this.loading = true;
+                    axios.get('/api/configs').then(res => {
+                        this.configs = res.data;
+                        if (this.activeMenu === 'view') {
+                            this.loadCacheAndAutoFetch();
+                        }
+                    }).finally(() => {
+                        this.loading = false;
+                    });
+                },
+                saveConfigs(newConfigs) {
+                    axios.post('/api/configs', newConfigs).then(res => {
+                        this.$message.success('商品配置已更新');
+                    });
+                },
+                openAddDialog() {
+                    this.editIndex = -1;
+                    this.form.brand = '';
+                    this.form.name = '';
+                    this.form.code = '';
+                    this.dialogVisible = true;
+                },
+                openEditDialog(index, row) {
+                    this.editIndex = index;
+                    this.form.brand = row.brand || '';
+                    this.form.name = row.name;
+                    this.form.code = row.code;
+                    this.dialogVisible = true;
+                },
+                saveConfigForm() {
+                    if (!this.form.name || !this.form.code || !this.form.brand) {
+                        this.$message.warning('请填写完整的品牌、商品名称和条码');
+                        return;
+                    }
+                    
+                    if (this.editIndex === -1) {
+                        // 新增
+                        this.configs.push({
+                            brand: this.form.brand.trim(),
+                            name: this.form.name.trim(),
+                            code: this.form.code.trim()
+                        });
+                    } else {
+                        // 编辑
+                        this.configs[this.editIndex].brand = this.form.brand.trim();
+                        this.configs[this.editIndex].name = this.form.name.trim();
+                        this.configs[this.editIndex].code = this.form.code.trim();
+                    }
+                    
+                    this.saveConfigs(this.configs);
+                    this.dialogVisible = false;
+                    
+                    if (this.activeMenu === 'view') {
+                        this.loadCacheAndAutoFetch();
+                    }
+                },
+                deleteConfig(index) {
+                    this.$confirm('确认删除该商品配置?', '提示', { type: 'warning' }).then(() => {
+                        this.configs.splice(index, 1);
+                        this.saveConfigs(this.configs);
+                    }).catch(() => {});
+                },
+                // 批量导入 JSON 逻辑
+                confirmImport() {
+                    if (!this.importJsonStr.trim()) {
+                        this.$message.warning('请先粘贴 JSON 数据');
+                        return;
+                    }
+                    try {
+                        const parsed = JSON.parse(this.importJsonStr);
+                        if (!Array.isArray(parsed)) {
+                            this.$message.error('JSON 格式不正确，必须是一个包含对象的数组 []');
+                            return;
+                        }
+                        
+                        let validCount = 0;
+                        let skipCount = 0;
+                        parsed.forEach(item => {
+                            // 必须同时包含 brand, name, code
+                            if (item.brand && item.name && item.code) {
+                                // 以 code 为唯一键，防止重复导入
+                                const exists = this.configs.find(c => c.code === String(item.code).trim());
+                                if (!exists) {
+                                    this.configs.push({
+                                        brand: String(item.brand).trim(),
+                                        name: String(item.name).trim(),
+                                        code: String(item.code).trim()
+                                    });
+                                    validCount++;
+                                } else {
+                                    skipCount++;
+                                }
+                            }
+                        });
+                        
+                        this.saveConfigs(this.configs);
+                        this.$message.success(`成功导入 ${validCount} 条新配置！${skipCount > 0 ? '跳过了 ' + skipCount + ' 条重复的条码。' : ''}`);
+                        this.importDialogVisible = false;
+                        this.importJsonStr = '';
+                        
+                        if (this.activeMenu === 'view') {
+                            this.loadCacheAndAutoFetch();
+                        }
+                    } catch (e) {
+                        this.$message.error('JSON 解析失败，请检查格式是否正确（注意引号和逗号）');
+                    }
+                },
+                // 加载后端缓存数据，如果发现有配置没有缓存，则自动触发查库存
+                loadCacheAndAutoFetch() {
+                    axios.get('/api/inventory/cache').then(res => {
+                        this.cache = res.data;
+                        // 检查是否有缺失缓存的商品
+                        this.configs.forEach(item => {
+                            if (!this.cache[item.code]) {
+                                // 静默自动获取
+                                this.updateSingle(item.code, true);
+                            }
+                        });
+                    });
+                },
+                // 更新单个库存 (isAuto为true时不弹错误提示，只在后台默默请求)
+                async updateSingle(code, isAuto = false) {
+                    if (!this.cookie) {
+                        if (!isAuto) this.$message.error('请先在顶部填写并保存 Cookie');
+                        return;
+                    }
+                    try {
+                        const res = await axios.post('/api/inventory', {
+                            itemCode: code,
+                            cookie: this.cookie
+                        });
+                        
+                        if (res.data.error) {
+                            if (!isAuto) this.$message.error(res.data.error);
+                            return;
+                        }
+                        
+                        if (res.data.success && res.data.data) {
+                            // 响应式更新对应 code 的缓存
+                            this.$set(this.cache, code, res.data.data);
+                            if (!isAuto) this.$message.success('刷新成功');
+                        }
+                    } catch (error) {
+                        if (!isAuto) this.$message.error('请求接口失败');
+                    }
+                },
+                // 更新整个品牌分组下的商品库存
+                async updateBrand(brand) {
+                    const items = this.groupedConfigs[brand];
+                    if (!items || items.length === 0) return;
+                    
+                    if (!this.cookie) {
+                        this.$message.error('请先填写并保存 Cookie');
+                        return;
+                    }
+                    
+                    this.loading = true;
+                    let successCount = 0;
+                    for (let i = 0; i < items.length; i++) {
+                        await this.updateSingle(items[i].code, true);
+                        successCount++;
+                        // 加 500ms 延时防止风控
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                    this.loading = false;
+                    this.$message.success(`【${brand}】更新完成，共更新 ${successCount} 个商品库存`);
+                },
+                // 强制一键更新全部缓存
+                async updateAll() {
+                    if (!this.cookie) {
+                        this.$message.error('请先填写并保存 Cookie');
+                        return;
+                    }
+                    if (this.configs.length === 0) {
+                        this.$message.warning('当前没有配置任何商品');
+                        return;
+                    }
+                    
+                    this.loading = true;
+                    let successCount = 0;
+                    for (let i = 0; i < this.configs.length; i++) {
+                        await this.updateSingle(this.configs[i].code, true);
+                        successCount++;
+                        // 加 500ms 延时防止请求过快被风控
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                    this.loading = false;
+                    this.$message.success(`批量更新完成，共更新 ${successCount} 个商品库存`);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
