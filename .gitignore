@@ -1,0 +1,29 @@
+# 构建产物
+build/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# 打包配置 (自动生成)
+*.spec
+
+# 本地缓存/数据
+tax_cache.json
+inventory_cache.json
+*.db
+
+# 日志
+*.log
+
+# 环境变量
+.env
