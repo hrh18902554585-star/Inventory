@@ -5,7 +5,14 @@ import time
 from flask import Flask, render_template, request, jsonify
 from query_inventory import get_inventory_query
 
+# 中国时区（北京时间）
+CN_TZ = datetime.timezone(datetime.timedelta(hours=8))
+
+def cn_now():
+    return datetime.datetime.now(CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
 app = Flask(__name__)
+current_dir = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(current_dir, "config.json")
 COOKIE_FILE = os.path.join(current_dir, "cookie.txt")
 CACHE_FILE = os.path.join(current_dir, "inventory_cache.json")
@@ -94,7 +101,7 @@ def fetch_inventory():
         return jsonify({"error": "缺少商品编码或Cookie"}), 400
     
     warehouse_data = {}
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = cn_now()
     any_success = False
     
     for wh_name, store_codes in WAREHOUSES.items():
