@@ -1,21 +1,20 @@
 import os
 import json
-import sys
 import datetime
+import time
 from flask import Flask, render_template, request, jsonify
-
-# 将上级目录加入 sys.path，以便能够导入 tools 里的脚本
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-
-from tools.query_inventory import get_inventory_query
+from query_inventory import get_inventory_query
 
 app = Flask(__name__)
 CONFIG_FILE = os.path.join(current_dir, "config.json")
 COOKIE_FILE = os.path.join(current_dir, "cookie.txt")
 CACHE_FILE = os.path.join(current_dir, "inventory_cache.json")
+
+# 仓库配置：{ 显示名称: storeCodes列表(None=不限) }
+WAREHOUSES = {
+    "义乌": None,
+    "南昌": ["NCZ801"]
+}
 
 def load_json(filepath, default):
     if os.path.exists(filepath):
@@ -29,6 +28,28 @@ def load_json(filepath, default):
 def save_json(filepath, data):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
+def aggregate_inventory(data_list):
+    """聚合库存数据：可用=非默认渠道累加，总库存和占用=所有渠道累加"""
+    available_qty = 0
+    total_good_qty = 0
+    total_lock_qty = 0
+    store_name = ""
+    
+    for inv in data_list:
+        total_good_qty += inv.get("goodQuantity", 0)
+        total_lock_qty += inv.get("lockQuantity", 0)
+        if inv.get("channelName") != "默认":
+            available_qty += inv.get("availableQuantity", 0)
+        if not store_name and inv.get("storeName"):
+            store_name = inv.get("storeName")
+    
+    return {
+        "availableQuantity": available_qty,
+        "goodQuantity": total_good_qty,
+        "lockQuantity": total_lock_qty,
+        "storeName": store_name or "-"
+    }
 
 @app.route('/')
 def index():
@@ -71,61 +92,47 @@ def fetch_inventory():
     
     if not item_code or not cookie:
         return jsonify({"error": "缺少商品编码或Cookie"}), 400
-        
-    res = get_inventory_query(item_code, cookie)
     
-    # 如果查询成功，更新缓存
-    if "error" not in res and res.get("data") and len(res["data"]) > 0:
-        data_list = res["data"]
+    warehouse_data = {}
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    any_success = False
+    
+    for wh_name, store_codes in WAREHOUSES.items():
+        res = get_inventory_query(item_code, cookie, store_codes)
         
-        # 聚合逻辑：
-        # 可用库存 = “非淘ToC” 渠道的 availableQuantity (如果没有非淘ToC，暂取所有非默认渠道的累加)
-        # 总正品库存 = 所有渠道的 goodQuantity 累加
-        # 占用库存 = 所有渠道的 lockQuantity 累加
-        # 仓库名称 = 取第一个非空 storeName
+        if "error" not in res and res.get("data") is not None:
+            data_list = res["data"]
+            if len(data_list) > 0:
+                agg = aggregate_inventory(data_list)
+                agg["updateTime"] = now_str
+                warehouse_data[wh_name] = agg
+                any_success = True
+            else:
+                warehouse_data[wh_name] = {
+                    "availableQuantity": 0,
+                    "goodQuantity": 0,
+                    "lockQuantity": 0,
+                    "storeName": wh_name,
+                    "updateTime": now_str
+                }
+        else:
+            warehouse_data[wh_name] = {
+                "availableQuantity": 0,
+                "goodQuantity": 0,
+                "lockQuantity": 0,
+                "storeName": f"{wh_name}(查询失败)",
+                "updateTime": now_str
+            }
         
-        available_qty = 0
-        total_good_qty = 0
-        total_lock_qty = 0
-        store_name = ""
-        
-        for inv in data_list:
-            # 累加总库存和占用库存
-            total_good_qty += inv.get("goodQuantity", 0)
-            total_lock_qty += inv.get("lockQuantity", 0)
-            
-            # 提取可用库存 (非淘ToC渠道)
-            # 有些商品可能没有"非淘ToC"而有"淘系ToC"等，保险起见，我们排除"默认"渠道作为可用库存的统计来源
-            if inv.get("channelName") != "默认":
-                available_qty += inv.get("availableQuantity", 0)
-                
-            if not store_name and inv.get("storeName"):
-                store_name = inv.get("storeName")
-
-        cache_data = load_json(CACHE_FILE, {})
-        cache_data[item_code] = {
-            "availableQuantity": available_qty,
-            "goodQuantity": total_good_qty,
-            "lockQuantity": total_lock_qty,
-            "storeName": store_name,
-            "updateTime": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        save_json(CACHE_FILE, cache_data)
-        return jsonify({"success": True, "data": cache_data[item_code]})
-    elif "error" not in res and (not res.get("data") or len(res["data"]) == 0):
-        # 查到了但是空数据
-        cache_data = load_json(CACHE_FILE, {})
-        cache_data[item_code] = {
-            "availableQuantity": 0,
-            "goodQuantity": 0,
-            "lockQuantity": 0,
-            "storeName": "-",
-            "updateTime": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        save_json(CACHE_FILE, cache_data)
-        return jsonify({"success": True, "data": cache_data[item_code]})
-        
-    return jsonify(res)
+        # 仓库间加延迟防封
+        time.sleep(0.8)
+    
+    # 更新缓存
+    cache_data = load_json(CACHE_FILE, {})
+    cache_data[item_code] = warehouse_data
+    save_json(CACHE_FILE, cache_data)
+    
+    return jsonify({"success": any_success, "data": warehouse_data})
 
 if __name__ == '__main__':
     # 默认运行在 5000 端口
