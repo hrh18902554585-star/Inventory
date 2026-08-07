@@ -2,3 +2,5 @@ requests
 openpyxl
 ttkbootstrap
 pyinstaller
+flask
+gunicorn
