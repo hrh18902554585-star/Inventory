@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>📦 菜鸟库存管理系统</title>
     <!-- 引入 Element UI 样式 -->
-    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <link rel="stylesheet" href="/static/css/element-ui.css">
     <style>
         body { 
             font-family: "Helvetica Neue",Helvetica,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","微软雅黑",Arial,sans-serif; 
@@ -176,36 +176,40 @@
                                     </div>
                                     
                                     <!-- 品牌内产品以极紧凑(mini)表格展示 -->
-                                    <el-table :data="items" size="mini" style="width: 100%" stripe>
-                                        <el-table-column prop="name" label="商品名称" min-width="120" show-overflow-tooltip></el-table-column>
-                                        <el-table-column label="可用" align="center" width="55">
-                                            <template slot-scope="scope">
-                                                <span v-if="cache[scope.row.code]" :style="{ color: staleColor(scope.row.code, '#67C23A'), fontWeight: 'bold', opacity: isStale(scope.row.code) ? 0.6 : 1 }" v-text="cache[scope.row.code].availableQuantity"></span>
-                                                <span v-else>-</span>
+                                    <el-table :data="flatBrandItems(brand)" size="mini" style="width: 100%" stripe>
+                                        <el-table-column label="仓库" align="center" width="50">
+                                            <template slot-scope="s">
+                                                <el-tag size="mini" :type="s.row.wh === '义乌' ? 'warning' : 'success'" v-text="s.row.wh"></el-tag>
                                             </template>
                                         </el-table-column>
-                                        <el-table-column label="总数" align="center" width="55">
-                                            <template slot-scope="scope">
-                                                <span v-if="cache[scope.row.code]" :style="{ color: staleColor(scope.row.code, '#303133'), fontWeight: 'bold', opacity: isStale(scope.row.code) ? 0.5 : 1 }" v-text="cache[scope.row.code].goodQuantity"></span>
-                                                <span v-else>-</span>
+                                        <el-table-column prop="name" label="商品名称" min-width="100" show-overflow-tooltip></el-table-column>
+                                        <el-table-column label="可用" align="center" width="50">
+                                            <template slot-scope="s">
+                                                <span v-if="s.row.whData" :style="{ color: staleWhColor(s.row.code, s.row.wh), fontWeight: 'bold', opacity: isWhStale(s.row.code, s.row.wh) ? 0.6 : 1 }" v-text="s.row.whData.availableQuantity"></span>
+                                                <span v-else style="color:#c0c4cc">-</span>
                                             </template>
                                         </el-table-column>
-                                        <el-table-column label="占用" align="center" width="55">
-                                            <template slot-scope="scope">
-                                                <span v-if="cache[scope.row.code]" :style="{ color: staleColor(scope.row.code, '#E6A23C'), fontWeight: 'bold', opacity: isStale(scope.row.code) ? 0.5 : 1 }" v-text="cache[scope.row.code].lockQuantity"></span>
-                                                <span v-else>-</span>
+                                        <el-table-column label="总数" align="center" width="50">
+                                            <template slot-scope="s">
+                                                <span v-if="s.row.whData" :style="{ color: staleWhColor2(s.row.code, s.row.wh), fontWeight: 'bold', opacity: isWhStale(s.row.code, s.row.wh) ? 0.5 : 1 }" v-text="s.row.whData.goodQuantity"></span>
+                                                <span v-else style="color:#c0c4cc">-</span>
                                             </template>
                                         </el-table-column>
-                                        <!-- 新增：最近更新时间列 -->
-                                        <el-table-column label="更新时间" align="center" width="135">
-                                            <template slot-scope="scope">
-                                                <span v-if="cache[scope.row.code]" :style="{ fontSize: '12px', color: isStale(scope.row.code) ? '#c0c4cc' : '#606266', transform: 'scale(0.9)', display: 'inline-block' }" v-text="cache[scope.row.code].updateTime"></span>
-                                                <span v-else>-</span>
+                                        <el-table-column label="占用" align="center" width="50">
+                                            <template slot-scope="s">
+                                                <span v-if="s.row.whData" :style="{ color: staleWhColor3(s.row.code, s.row.wh), fontWeight: 'bold', opacity: isWhStale(s.row.code, s.row.wh) ? 0.5 : 1 }" v-text="s.row.whData.lockQuantity"></span>
+                                                <span v-else style="color:#c0c4cc">-</span>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column label="更新时间" align="center" width="140">
+                                            <template slot-scope="s">
+                                                <span v-if="s.row.whData" :style="{ fontSize: '11px', color: isWhStale(s.row.code, s.row.wh) ? '#c0c4cc' : '#606266', whiteSpace: 'nowrap' }" v-text="s.row.whData.updateTime"></span>
+                                                <span v-else style="color:#c0c4cc;font-size:11px">-</span>
                                             </template>
                                         </el-table-column>
                                         <el-table-column label="操作" width="50" align="center">
-                                            <template slot-scope="scope">
-                                                <el-button size="mini" type="text" @click="updateSingle(scope.row.code, false)">刷新</el-button>
+                                            <template slot-scope="s">
+                                                <el-button size="mini" type="text" @click="updateSingle(s.row.code, false)">刷新</el-button>
                                             </template>
                                         </el-table-column>
                                     </el-table>
@@ -220,7 +224,8 @@
                             <div slot="header" class="clearfix">
                                 <span style="font-weight: bold; font-size: 16px;">商品库存核对配置</span>
                                 <el-button style="float: right; padding: 3px 0; margin-left: 15px;" type="primary" @click="openAddDialog">➕ 添加商品</el-button>
-                                <el-button style="float: right; padding: 3px 0;" type="success" @click="importDialogVisible = true">📥 批量导入 JSON</el-button>
+                                <el-button style="float: right; padding: 3px 0; margin-left: 15px;" type="success" @click="importDialogVisible = true">📥 批量导入 JSON</el-button>
+                                <el-button style="float: right; padding: 3px 0;" type="warning" @click="exportConfig">📤 导出 JSON</el-button>
                             </div>
                             
                             <el-table :data="configs" border style="width: 100%" v-loading="loading">
@@ -257,6 +262,12 @@
                 <el-form-item label="商品条码" required>
                     <el-input v-model="form.code" placeholder="例如：4891035065913" @keyup.enter.native="saveConfigForm"></el-input>
                 </el-form-item>
+                <el-form-item label="查询仓库">
+                    <el-checkbox-group v-model="form.warehouses" size="small">
+                        <el-checkbox label="义乌" border></el-checkbox>
+                        <el-checkbox label="南昌" border></el-checkbox>
+                    </el-checkbox-group>
+                </el-form-item>
             </el-form>
             <span slot="footer" class="dialog-footer">
                 <el-button @click="dialogVisible = false">取 消</el-button>
@@ -266,12 +277,12 @@
 
         <!-- 批量导入 JSON 弹窗 -->
         <el-dialog title="批量导入配置 (JSON格式)" :visible.sync="importDialogVisible" width="600px">
-            <el-alert title='请提供包含 brand, name, code 字段的 JSON 数组' type="info" show-icon style="margin-bottom: 10px;" :closable="false">
+            <el-alert title='请提供包含 brand, name, code, warehouses 字段的 JSON 数组' type="info" show-icon style="margin-bottom: 10px;" :closable="false">
                 <div style="margin-top: 5px; font-family: monospace;">
                     例如：<br>
                     [<br>
-                    &nbsp;&nbsp;{ "brand": "MoveFree", "name": "益节绿瓶", "code": "4891035065913" },<br>
-                    &nbsp;&nbsp;{ "brand": "Dokkan", "name": "植物酵素", "code": "123456789" }<br>
+                    &nbsp;&nbsp;{ "brand": "MoveFree", "name": "益节绿瓶", "code": "4891035065913", "warehouses": ["义乌"] },<br>
+                    &nbsp;&nbsp;{ "brand": "Dokkan", "name": "植物酵素", "code": "123456789", "warehouses": ["义乌", "南昌"] }<br>
                     ]
                 </div>
             </el-alert>
@@ -284,11 +295,11 @@
     </div>
 
     <!-- 引入 Vue 2 CDN -->
-    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+    <script src="/static/js/vue.min.js"></script>
     <!-- 引入 Element UI 组件库 CDN -->
-    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script src="/static/js/element-ui.js"></script>
     <!-- 引入 Axios 用于发送 HTTP 请求 -->
-    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="/static/js/axios.min.js"></script>
 
     <script>
         new Vue({
@@ -299,7 +310,7 @@
                 configs: [],
                 cache: {},
                 loading: false,
-                itemsPerRow: 2, // 默认每行显示2列品牌表格
+                itemsPerRow: 3, // 默认每行显示3列品牌表格
                 dialogVisible: false,
                 importDialogVisible: false,
                 importJsonStr: '',
@@ -307,10 +318,15 @@
                 form: {
                     brand: '',
                     name: '',
-                    code: ''
+                    code: '',
+                    warehouses: ['义乌']
                 }
             },
             computed: {
+                // 仓库列表
+                warehouseNames() {
+                    return ['义乌', '南昌'];
+                },
                 // 根据品牌分组对配置进行聚合
                 groupedConfigs() {
                     const groups = {};
@@ -329,21 +345,41 @@
                 this.loadConfigs();
             },
             methods: {
-                // 判断缓存是否超过10分钟（过期变灰）
-                isStale(code) {
-                    const c = this.cache[code];
-                    if (!c || !c.updateTime) return true;
-                    try {
-                        const updated = new Date(c.updateTime.replace(/-/g, '/'));
-                        const diff = (Date.now() - updated.getTime()) / 1000 / 60;
-                        return diff > 10;
-                    } catch (e) {
-                        return true;
-                    }
+                // 将品牌下的商品按仓库展开为多行
+                flatBrandItems(brand) {
+                    const rows = [];
+                    const items = this.groupedConfigs[brand] || [];
+                    items.forEach(item => {
+                        // 取该商品配置的仓库，默认只有义乌
+                        const whs = item.warehouses && item.warehouses.length ? item.warehouses : ['义乌'];
+                        whs.forEach(wh => {
+                            const whData = this.cache[item.code] ? this.cache[item.code][wh] || null : null;
+                            // 南昌仓库：没货就不显示
+                            if (wh === '南昌' && (!whData || whData.goodQuantity <= 0)) return;
+                            rows.push({ ...item, wh: wh, whData: whData });
+                        });
+                    });
+                    return rows;
                 },
-                // 根据是否过期返回颜色
-                staleColor(code, freshColor) {
-                    return this.isStale(code) ? '#c0c4cc' : freshColor;
+                // 判断某仓库数据是否过期
+                isWhStale(code, wh) {
+                    const wd = this.cache[code];
+                    if (!wd) return true;
+                    const d = wd[wh];
+                    if (!d || !d.updateTime) return true;
+                    try {
+                        const updated = new Date(d.updateTime.replace(/-/g, '/'));
+                        return (Date.now() - updated.getTime()) / 1000 / 60 > 10;
+                    } catch (e) { return true; }
+                },
+                staleWhColor(code, wh) {
+                    return this.isWhStale(code, wh) ? '#c0c4cc' : '#67C23A';
+                },
+                staleWhColor2(code, wh) {
+                    return this.isWhStale(code, wh) ? '#c0c4cc' : '#303133';
+                },
+                staleWhColor3(code, wh) {
+                    return this.isWhStale(code, wh) ? '#c0c4cc' : '#E6A23C';
                 },
                 handleMenuSelect(index) {
                     this.activeMenu = index;
@@ -382,6 +418,7 @@
                     this.form.brand = '';
                     this.form.name = '';
                     this.form.code = '';
+                    this.form.warehouses = ['义乌'];
                     this.dialogVisible = true;
                 },
                 openEditDialog(index, row) {
@@ -389,6 +426,7 @@
                     this.form.brand = row.brand || '';
                     this.form.name = row.name;
                     this.form.code = row.code;
+                    this.form.warehouses = row.warehouses && row.warehouses.length ? [...row.warehouses] : ['义乌'];
                     this.dialogVisible = true;
                 },
                 saveConfigForm() {
@@ -402,13 +440,15 @@
                         this.configs.push({
                             brand: this.form.brand.trim(),
                             name: this.form.name.trim(),
-                            code: this.form.code.trim()
+                            code: this.form.code.trim(),
+                            warehouses: [...this.form.warehouses]
                         });
                     } else {
                         // 编辑
                         this.configs[this.editIndex].brand = this.form.brand.trim();
                         this.configs[this.editIndex].name = this.form.name.trim();
                         this.configs[this.editIndex].code = this.form.code.trim();
+                        this.configs[this.editIndex].warehouses = [...this.form.warehouses];
                     }
                     
                     this.saveConfigs(this.configs);
@@ -448,7 +488,8 @@
                                     this.configs.push({
                                         brand: String(item.brand).trim(),
                                         name: String(item.name).trim(),
-                                        code: String(item.code).trim()
+                                        code: String(item.code).trim(),
+                                        warehouses: item.warehouses && item.warehouses.length ? item.warehouses : ['义乌']
                                     });
                                     validCount++;
                                 } else {
@@ -468,6 +509,27 @@
                     } catch (e) {
                         this.$message.error('JSON 解析失败，请检查格式是否正确（注意引号和逗号）');
                     }
+                },
+                // 导出配置为 JSON 并复制到剪贴板
+                exportConfig() {
+                    if (this.configs.length === 0) {
+                        this.$message.warning('当前没有配置数据可导出');
+                        return;
+                    }
+                    const json = JSON.stringify(this.configs, null, 2);
+                    const textarea = document.createElement('textarea');
+                    textarea.value = json;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.$message.success(`已复制 ${this.configs.length} 条配置到剪贴板`);
+                    } catch (e) {
+                        this.$message.error('复制失败，请手动复制');
+                    }
+                    document.body.removeChild(textarea);
                 },
                 // 加载后端缓存数据，如果发现有配置没有缓存，则自动触发查库存
                 loadCacheAndAutoFetch() {
@@ -529,7 +591,7 @@
                     this.loading = false;
                     this.$message.success(`【${brand}】更新完成，共更新 ${successCount} 个商品库存`);
                 },
-                // 强制一键更新全部缓存
+                // 强制一键更新全部缓存（按瀑布流品牌从左到右、从上到下）
                 async updateAll() {
                     if (!this.cookie) {
                         this.$message.error('请先填写并保存 Cookie');
@@ -542,12 +604,34 @@
                     
                     this.loading = true;
                     let successCount = 0;
-                    for (let i = 0; i < this.configs.length; i++) {
-                        await this.updateSingle(this.configs[i].code, true);
-                        successCount++;
-                        // 加 500ms 延时防止请求过快被风控
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // 获取品牌列表（瀑布流 CSS column-count 列优先填充顺序）
+                    const brandKeys = Object.keys(this.groupedConfigs);
+                    const n = brandKeys.length;
+                    const cols = this.itemsPerRow;
+                    const rows = Math.ceil(n / cols);
+                    
+                    // 按瀑布流视觉顺序重排品牌：第1行左→中→右, 第2行左→中→右...
+                    const brandOrder = [];
+                    let j = 0;
+                    while (brandOrder.length < n) {
+                        const row = j % rows;
+                        const col = Math.floor(j / rows);
+                        const idx = row * cols + col;
+                        if (idx < n) brandOrder.push(brandKeys[idx]);
+                        j++;
                     }
+                    
+                    // 按视觉顺序逐品牌逐商品更新
+                    for (const brand of brandOrder) {
+                        const items = this.groupedConfigs[brand];
+                        for (const item of items) {
+                            await this.updateSingle(item.code, true);
+                            successCount++;
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                    }
+                    
                     this.loading = false;
                     this.$message.success(`批量更新完成，共更新 ${successCount} 个商品库存`);
                 }

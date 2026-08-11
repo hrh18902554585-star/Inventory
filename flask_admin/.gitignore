@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+inventory_cache.json
+cookie.txt

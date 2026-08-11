@@ -28,10 +28,11 @@ def _get_common_headers(csrf_token, cookie):
         "Cookie": cookie
     }
 
-def get_inventory_query(item_param_code, cookie):
+def get_inventory_query(item_param_code, cookie, store_codes=None):
     """
     接口1: /omni/inventory/itemInv/query
     用于查询库存列表（包含分页参数）
+    store_codes: 可选，指定仓库编码列表，如 ["NCZ801"]
     """
     url = "https://b.cainiao.com/omni/inventory/itemInv/query"
     csrf_token = _extract_csrf_from_cookie(cookie)
@@ -49,6 +50,8 @@ def get_inventory_query(item_param_code, cookie):
         ],
         "_csrf": csrf_token
     }
+    if store_codes:
+        post_data["storeCodes"] = store_codes
     
     try:
         response = requests.post(url, headers=headers, data=json.dumps(post_data), timeout=30, allow_redirects=False)
