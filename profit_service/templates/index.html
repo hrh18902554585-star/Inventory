@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>利润核算系统</title>
+    <link rel="stylesheet" href="/static/css/element-ui.css">
+    <style>
+        body { font-family: "Helvetica Neue",Helvetica,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","微软雅黑",Arial,sans-serif; margin: 0; padding: 0; background-color: #f5f7fa; }
+        .el-header { background-color: #fff; color: #333; line-height: 60px; box-shadow: 0 2px 4px rgba(0,0,0,.08); display: flex; justify-content: space-between; align-items: center; z-index: 10; flex-wrap: wrap; }
+        .el-aside { background-color: #304156; color: #fff; min-height: 100vh; }
+        .aside-brand { height: 60px; line-height: 60px; text-align: center; font-size: 17px; font-weight: bold; color: #fff; background-color: #2b3643; }
+        .el-menu { border-right: none; }
+        .el-main { background-color: #f0f2f5; padding: 20px; }
+        .view-title { font-size: 16px; font-weight: bold; color: #303133; }
+        .req-star { color: #F56C6C; margin-left: 2px; }
+        .cfg-card .el-card__header { padding: 10px 15px; background-color: #fafafa; }
+        .log-box { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, Menlo, "Courier New", monospace; font-size: 12px; line-height: 1.7; padding: 10px 12px; border-radius: 4px; overflow-y: auto; word-break: break-all; }
+        .log-box-card { height: 150px; }
+        .log-box-detail { height: 320px; }
+        .log-line .ts { color: #8a8f98; margin-right: 8px; }
+        .log-line .lvl { display: inline-block; min-width: 46px; margin-right: 8px; font-weight: bold; }
+        .lvl-info { color: #5cb8ff; } .lvl-success { color: #67C23A; } .lvl-warning { color: #E6A23C; } .lvl-error { color: #F56C6C; }
+        .empty-log { color: #8a8f98; }
+        .mobile-tab-bar { display: none; position: fixed; bottom: 0; width: 100%; background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 100; }
+        .mobile-tab-bar .el-menu-item { width: 33.333%; text-align: center; padding: 0 !important; }
+        .running-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+        @media (max-width: 768px) {
+            .el-aside { display: none; }
+            .el-header { flex-direction: column; height: auto !important; padding: 12px 10px; line-height: normal; gap: 8px; }
+            .el-header > div { width: 100%; text-align: center; }
+            .el-main { padding: 10px; padding-bottom: 70px; }
+            .mobile-tab-bar { display: flex; }
+            .detail-dialog { width: 94% !important; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        {% raw %}
+        <el-container style="min-height: 100vh;">
+            <!-- 左侧菜单 (PC端) -->
+            <el-aside width="220px">
+                <div class="aside-brand">💰 利润核算系统</div>
+                <el-menu :default-active="view.active" background-color="#304156" text-color="#bfcbd9" active-text-color="#409EFF" @select="handleMenuSelect">
+                    <el-menu-item index="overview"><i class="el-icon-data-board"></i><span slot="title">任务总览</span></el-menu-item>
+                    <el-menu-item index="create"><i class="el-icon-plus"></i><span slot="title">新建任务</span></el-menu-item>
+                    <el-menu-item index="history"><i class="el-icon-time"></i><span slot="title">历史记录</span></el-menu-item>
+                </el-menu>
+            </el-aside>
+
+            <el-container>
+                <!-- 顶部导航栏 -->
+                <el-header>
+                    <div class="view-title">
+                        <span v-if="view.active === 'overview'">任务总览</span>
+                        <span v-else-if="view.active === 'create'">新建利润核算任务</span>
+                        <span v-else>历史记录</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <el-button size="small" icon="el-icon-lock" plain @click="openTokenDialog">{{ token.saved ? '令牌已保存' : '设置令牌' }}</el-button>
+                        <el-button v-if="view.active === 'overview'" type="primary" size="small" icon="el-icon-refresh" plain @click="refreshOverview">刷新</el-button>
+                        <el-button v-if="view.active === 'overview'" type="primary" size="small" icon="el-icon-plus" @click="goView('create')">新建任务</el-button>
+                    </div>
+                </el-header>
+
+                <!-- 主体内容 -->
+                <el-main>
+                    <!-- ============ 视图1 任务总览 ============ -->
+                    <div v-show="view.active === 'overview'">
+                        <!-- 运行中任务进度卡 -->
+                        <el-card v-if="runningTask()" shadow="never" style="margin-bottom: 20px;">
+                            <div slot="header" class="running-head">
+                                <span style="font-weight: bold; font-size: 15px;"><i class="el-icon-loading" style="color: #409EFF;"></i> 运行中的任务
+                                    <el-tag size="mini" style="margin-left: 8px;" :type="cardTask().status === 'running' ? 'primary' : 'info'">{{ cardTask().status === 'running' ? '运行中' : '排队中' }}</el-tag></span>
+                                <el-button size="mini" type="primary" plain @click="openDetail(cardTask())">查看详情</el-button>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap;">
+                                    <span style="color: #606266; font-size: 13px;">任务 <b style="color:#303133;">{{ cardTask().id }}</b>
+                                        <span style="color:#909399;"> · 创建于 {{ cardTask().created_at }}</span>
+                                        <span style="color:#909399;" v-if="cardTask().status === 'running'"> · 已运行 {{ elapsedText(cardTask()) }}</span></span>
+                                    <span v-if="cardTask().status_text" style="color: #E6A23C; font-size: 13px;">{{ cardTask().status_text }}</span>
+                                </div>
+                                <el-progress :percentage="progressPercent(cardTask())" :status="cardTask().status === 'done' ? 'success' : (cardTask().status === 'error' ? 'exception' : '')"></el-progress>
+                            </div>
+                            <div style="margin-bottom: 8px; color: #606266; font-size: 13px;">实时日志：</div>
+                            <div ref="cardLogBox" class="log-box log-box-card">
+                                <div v-if="!logs.logs.length" class="empty-log">等待任务日志输出…</div>
+                                <div v-for="(l, i) in logs.logs" :key="i" class="log-line"><span class="ts">{{ l.ts }}</span><span class="lvl" :class="'lvl-' + (l.level || 'info')">{{ l.level || 'info' }}</span><span>{{ l.msg }}</span></div>
+                            </div>
+                        </el-card>
+
+                        <!-- 无运行任务空状态 -->
+                        <el-card v-else shadow="never" style="margin-bottom: 20px;">
+                            <el-empty description="当前没有运行中的任务"><el-button type="primary" icon="el-icon-plus" @click="goView('create')">新建任务</el-button></el-empty>
+                        </el-card>
+
+                        <!-- 最近任务列表 -->
+                        <el-card shadow="never">
+                            <div slot="header" class="running-head">
+                                <span style="font-weight: bold; font-size: 15px;">最近任务</span>
+                                <el-button size="mini" type="text" @click="goView('history')">查看全部</el-button>
+                            </div>
+                            <el-table v-if="recentTasks().length" :data="recentTasks()" size="mini" stripe style="width: 100%" @row-click="openDetail">
+                                <el-table-column prop="id" label="任务ID" width="110"><template slot-scope="s"><span style="cursor: pointer; color: #409EFF;">{{ s.row.id }}</span></template></el-table-column>
+                                <el-table-column prop="created_at" label="创建时间" min-width="170" show-overflow-tooltip></el-table-column>
+                                <el-table-column label="状态" width="90" align="center"><template slot-scope="s"><el-tag size="mini" :type="statusTagType(s.row.status)" v-text="statusText(s.row.status)"></el-tag></template></el-table-column>
+                                <el-table-column label="进度" width="150"><template slot-scope="s"><el-progress :percentage="progressPercent(s.row)" :status="s.row.status === 'error' ? 'exception' : ''"></el-progress></template></el-table-column>
+                                <el-table-column prop="status_text" label="状态说明" min-width="120" show-overflow-tooltip></el-table-column>
+                                <el-table-column label="操作" width="110" align="center"><template slot-scope="s"><el-button size="mini" type="text" @click.stop="openDetail(s.row)">详情</el-button></template></el-table-column>
+                            </el-table>
+                            <el-empty v-else description="暂无任务，点击右上角「新建任务」开始"><el-button type="primary" icon="el-icon-plus" @click="goView('create')">新建任务</el-button></el-empty>
+                        </el-card>
+                    </div>
+
+                    <!-- ============ 视图2 新建任务 (4步向导) ============ -->
+                    <div v-show="view.active === 'create'">
+                        <el-card shadow="never">
+                            <el-steps :active="job.step - 1" finish-status="success" align-center style="margin: 10px 0 30px;">
+                                <el-step title="配置表"></el-step><el-step title="订单文件"></el-step><el-step title="参数设置"></el-step><el-step title="确认提交"></el-step>
+                            </el-steps>
+
+                            <!-- 第1步：配置表 -->
+                            <div v-show="job.step === 1">
+                                <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px;" title="请上传利润核算所需的配置表，带 * 为必填项；上传后自动校验表头格式。"></el-alert>
+                                <el-row :gutter="16">
+                                    <el-col v-for="t in cfg.types" :key="t.type" :xs="24" :sm="12" :md="8" style="margin-bottom: 16px;">
+                                        <el-card shadow="hover" class="cfg-card" body-style="padding: 14px 16px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                                <span style="font-weight: bold; font-size: 14px;">{{ t.name }}<span v-if="t.required" class="req-star">*</span></span>
+                                                <span><el-badge v-if="typeHasConfig(t.type)" value="已上传" type="success" style="margin-right: 8px;"></el-badge><el-tag v-else size="mini" type="info">未上传</el-tag></span>
+                                            </div>
+                                            <div v-if="typeHasConfig(t.type)" style="font-size: 12px; color: #909399; margin-bottom: 10px;">当前版本 v{{ typeCurrentVersion(t.type) }} · {{ typeCurrentFilename(t.type) }}<br>{{ typeCurrentTime(t.type) }} · {{ formatSize(typeCurrentSize(t.type)) }}</div>
+                                            <div v-else style="font-size: 12px; color: #c0c4cc; margin-bottom: 10px;">尚未上传{{ t.name }}</div>
+                                            <!-- 版本选择 -->
+                                            <div v-if="t.type === 'promo'" style="margin-bottom: 10px;">
+                                                <div style="font-size: 12px; color: #606266; margin-bottom: 4px;">参与任务的多份报表（可多选）：</div>
+                                                <el-select v-model="cfg.selection[t.type]" multiple collapse-tags size="small" style="width: 100%" placeholder="选择参与计算的报表" :disabled="!typeVersions(t.type).length">
+                                                    <el-option v-for="v in typeVersions(t.type)" :key="v.version" :label="'v' + v.version + ' · ' + v.filename" :value="v.version"></el-option>
+                                                </el-select>
+                                                <div style="margin-top: 6px; font-size: 12px; color: #606266; line-height: 1.9;" v-if="typeVersions(t.type).length">
+                                                    <div v-for="v in typeVersions(t.type)" :key="'d' + v.version">v{{ v.version }} · {{ v.filename }} <el-button size="mini" type="text" style="color: #F56C6C;" @click="deleteConfig(t.type, v.version)">删除</el-button></div>
+                                                </div>
+                                            </div>
+                                            <div v-else-if="typeVersions(t.type).length > 1" style="margin-bottom: 10px;">
+                                                <div style="font-size: 12px; color: #606266; margin-bottom: 4px;">参与任务的版本：</div>
+                                                <el-select v-model="cfg.selection[t.type]" size="small" style="width: 100%;" placeholder="选择版本">
+                                                    <el-option v-for="v in typeVersions(t.type)" :key="v.version" :label="'v' + v.version + ' · ' + v.filename" :value="v.version"></el-option>
+                                                </el-select>
+                                            </div>
+                                            <!-- 上传 + 删除 -->
+                                            <div style="display: flex; gap: 8px;">
+                                                <el-upload :show-file-list="false" accept=".xlsx,.csv" :http-request="(o) => handleConfigUpload(t.type, o)">
+                                                    <el-button type="primary" size="small" plain icon="el-icon-upload2" :loading="cfg.uploading[t.type]">上传</el-button>
+                                                </el-upload>
+                                                <el-button v-if="t.type !== 'promo' && typeHasConfig(t.type)" type="danger" size="small" plain @click="deleteConfig(t.type, cfg.selection[t.type] || typeCurrentVersion(t.type))">删除</el-button>
+                                            </div>
+                                        </el-card>
+                                    </el-col>
+                                </el-row>
+                            </div>
+
+                            <!-- 第2步：订单文件 -->
+                            <div v-show="job.step === 2">
+                                <el-upload drag multiple :show-file-list="false" accept=".xlsx,.csv" :http-request="handleOrderUpload" style="margin-bottom: 16px;">
+                                    <i class="el-icon-upload"></i>
+                                    <div class="el-upload__text">将订单文件拖到此处，或<em>点击上传</em>（支持多选，.xlsx/.csv，≤10MB）</div>
+                                </el-upload>
+                                <el-card shadow="never" body-style="padding: 0;">
+                                    <el-table v-if="upload.files.length" :data="upload.files" size="mini" stripe style="width: 100%">
+                                        <el-table-column prop="id" label="文件ID" width="110"></el-table-column>
+                                        <el-table-column prop="name" label="文件名" min-width="200" show-overflow-tooltip></el-table-column>
+                                        <el-table-column label="大小" width="90" align="center"><template slot-scope="s">{{ formatSize(s.row.size) }}</template></el-table-column>
+                                        <el-table-column prop="uploaded_at" label="上传时间" min-width="160" show-overflow-tooltip></el-table-column>
+                                        <el-table-column label="操作" width="80" align="center"><template slot-scope="s"><el-button size="mini" type="text" style="color: #F56C6C;" @click="deleteUpload(s.row)">删除</el-button></template></el-table-column>
+                                    </el-table>
+                                    <el-empty v-else description="暂未上传订单文件，任务需要至少一个订单文件"></el-empty>
+                                </el-card>
+                            </div>
+
+                            <!-- 第3步：参数 -->
+                            <div v-show="job.step === 3">
+                                <el-form label-width="100px" style="max-width: 640px;">
+                                    <el-form-item label="Cookie" required>
+                                        <el-input type="textarea" :rows="5" v-model="job.form.cookie" placeholder="请从浏览器开发者工具 (F12 → Network → 任意请求头) 中复制 Cookie 粘贴到此处"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="线程数">
+                                        <el-slider v-model="job.form.thread_count" :min="2" :max="4" :show-stops="true" style="width: 80%;"></el-slider>
+                                        <span style="color: #909399; font-size: 12px;">当前 {{ job.form.thread_count }} 个并发</span>
+                                    </el-form-item>
+                                    <el-form-item label="查税运"><el-switch v-model="job.form.enable_tax" active-text="开启" inactive-text="关闭"></el-switch></el-form-item>
+                                    <el-form-item label="排除ID">
+                                        <el-select v-model="job.form.exclude_ids" multiple filterable allow-create default-first-option placeholder="输入订单/商品ID 后回车添加，可多个" style="width: 100%;"></el-select>
+                                    </el-form-item>
+                                </el-form>
+                            </div>
+
+                            <!-- 第4步：摘要确认 -->
+                            <div v-show="job.step === 4">
+                                <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 16px;" title="提交后任务将立即开始执行，请确认以下信息无误。"></el-alert>
+                                <el-descriptions :column="1" border style="margin-bottom: 20px;">
+                                    <el-descriptions-item label="配置表">
+                                        <div v-for="line in summaryConfigLines" :key="line.text" style="line-height: 1.8;"><span v-if="line.missing" style="color: #F56C6C;">{{ line.text }}</span><span v-else>{{ line.text }}</span></div>
+                                    </el-descriptions-item>
+                                    <el-descriptions-item label="订单文件">
+                                        <div v-if="summaryFiles.length"><div v-for="f in summaryFiles" :key="f.id" style="line-height: 1.8;">{{ f.name }}（{{ f.id }}）</div></div>
+                                        <span v-else style="color: #F56C6C;">未选择订单文件</span>
+                                    </el-descriptions-item>
+                                    <el-descriptions-item label="Cookie"><span v-if="job.form.cookie" style="font-family: monospace;">{{ maskCookie(job.form.cookie) }}</span><span v-else style="color: #F56C6C;">未填写 Cookie</span></el-descriptions-item>
+                                    <el-descriptions-item label="参数"><span>线程数 {{ job.form.thread_count }}；查税运 {{ job.form.enable_tax ? '开启' : '关闭' }}；排除ID：{{ job.form.exclude_ids.length ? job.form.exclude_ids.join('、') : '无' }}</span></el-descriptions-item>
+                                </el-descriptions>
+                            </div>
+
+                            <!-- 向导底部按钮 -->
+                            <div style="text-align: center; margin-top: 10px;">
+                                <el-button v-if="job.step > 1" @click="job.step--">上一步</el-button>
+                                <el-button v-if="job.step < 4" type="primary" @click="nextStep">下一步</el-button>
+                                <el-button v-if="job.step === 4" type="primary" :loading="job.submitting" @click="submitJob">提交任务</el-button>
+                            </div>
+                        </el-card>
+                    </div>
+
+                    <!-- ============ 视图3 历史记录 ============ -->
+                    <div v-show="view.active === 'history'">
+                        <el-card shadow="never">
+                            <div slot="header" class="running-head">
+                                <span style="font-weight: bold; font-size: 15px;">全部任务</span>
+                                <el-select v-model="job.statusFilter" size="small" style="width: 140px;" placeholder="按状态筛选" clearable>
+                                    <el-option label="排队中" value="pending"></el-option><el-option label="运行中" value="running"></el-option><el-option label="已完成" value="done"></el-option><el-option label="失败" value="error"></el-option>
+                                </el-select>
+                            </div>
+                            <el-table v-if="statusFilteredHistory().length" :data="statusFilteredHistory()" size="mini" stripe style="width: 100%">
+                                <el-table-column prop="id" label="任务ID" width="110"><template slot-scope="s"><span style="cursor: pointer; color: #409EFF;" @click="openDetail(s.row)">{{ s.row.id }}</span></template></el-table-column>
+                                <el-table-column prop="created_at" label="创建时间" min-width="165" show-overflow-tooltip></el-table-column>
+                                <el-table-column label="状态" width="90" align="center"><template slot-scope="s"><el-tag size="mini" :type="statusTagType(s.row.status)" v-text="statusText(s.row.status)"></el-tag></template></el-table-column>
+                                <el-table-column label="进度" width="130"><template slot-scope="s"><el-progress :percentage="progressPercent(s.row)" :status="s.row.status === 'error' ? 'exception' : ''"></el-progress></template></el-table-column>
+                                <el-table-column label="耗时" width="90" align="center"><template slot-scope="s">{{ durationText(s.row) }}</template></el-table-column>
+                                <el-table-column label="操作" width="250" align="center">
+                                    <template slot-scope="s">
+                                        <el-button size="mini" type="text" @click="openDetail(s.row)">详情</el-button>
+                                        <el-dropdown v-if="resultFiles(s.row).length" trigger="click" @command="(f) => downloadResult(s.row, f)">
+                                            <el-button size="mini" type="text" style="color: #67C23A;">下载<i class="el-icon-arrow-down el-icon--right"></i></el-button>
+                                            <el-dropdown-menu slot="dropdown"><el-dropdown-item v-for="f in resultFiles(s.row)" :key="f" :command="f">{{ f }}</el-dropdown-item></el-dropdown-menu>
+                                        </el-dropdown>
+                                        <el-button v-else size="mini" type="text" disabled>下载</el-button>
+                                        <el-button size="mini" type="text" @click="rerunJob(s.row)">重跑</el-button>
+                                        <el-button size="mini" type="text" style="color: #F56C6C;" @click="deleteJob(s.row)">删除</el-button>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                            <el-empty v-else description="暂无历史任务"></el-empty>
+                        </el-card>
+                    </div>
+                </el-main>
+            </el-container>
+        </el-container>
+
+        <!-- 移动端底部导航 -->
+        <el-menu :default-active="view.active" mode="horizontal" class="mobile-tab-bar" active-text-color="#409EFF" @select="handleMenuSelect">
+            <el-menu-item index="overview"><i class="el-icon-data-board"></i> 总览</el-menu-item>
+            <el-menu-item index="create"><i class="el-icon-plus"></i> 新建</el-menu-item>
+            <el-menu-item index="history"><i class="el-icon-time"></i> 历史</el-menu-item>
+        </el-menu>
+
+        <!-- 任务详情弹层 -->
+        <el-dialog class="detail-dialog" :title="'任务详情 · ' + (logs.detail ? logs.detail.id : '')" :visible.sync="logs.visible" width="760px" @close="closeDetail">
+            <div v-if="logs.detail">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                    <el-tag :type="statusTagType(logs.detail.status)" v-text="statusText(logs.detail.status)"></el-tag>
+                    <span style="color: #909399; font-size: 13px;">创建 {{ logs.detail.created_at }}<span v-if="logs.detail.finished_at"> · 完成 {{ logs.detail.finished_at }} · 耗时 {{ durationText(logs.detail) }}</span></span>
+                </div>
+                <el-progress :percentage="progressPercent(logs.detail)" :status="logs.detail.status === 'done' ? 'success' : (logs.detail.status === 'error' ? 'exception' : '')"></el-progress>
+                <div v-if="logs.detail.status_text" style="margin: 8px 0; color: #E6A23C; font-size: 13px;">{{ logs.detail.status_text }}</div>
+                <el-alert v-if="logs.detail.error" type="error" :closable="false" show-icon style="margin: 10px 0;" :title="'任务失败：' + logs.detail.error"></el-alert>
+                <div v-if="resultFiles(logs.detail).length" style="margin: 10px 0;">
+                    <span style="color: #606266; font-size: 13px; margin-right: 8px;">结果文件：</span>
+                    <el-button v-for="f in resultFiles(logs.detail)" :key="f" size="small" type="success" plain icon="el-icon-download" @click="downloadResult(logs.detail, f)">{{ f }}</el-button>
+                </div>
+                <div style="margin: 12px 0 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #606266; font-size: 13px;">运行日志（{{ logs.logs.length }} 条）：</span>
+                    <el-switch v-model="logs.autoScroll" active-text="自动滚动" inactive-text=""></el-switch>
+                </div>
+                <div ref="detailLogBox" class="log-box log-box-detail">
+                    <div v-if="!logs.logs.length" class="empty-log">等待任务日志输出…</div>
+                    <div v-for="(l, i) in logs.logs" :key="i" class="log-line"><span class="ts">{{ l.ts }}</span><span class="lvl" :class="'lvl-' + (l.level || 'info')">{{ l.level || 'info' }}</span><span>{{ l.msg }}</span></div>
+                </div>
+            </div>
+        </el-dialog>
+
+        <!-- 令牌输入弹层 -->
+        <el-dialog title="访问令牌" :visible.sync="token.dialogVisible" width="440px" :close-on-click-modal="false" @closed="tokenDialogClosed">
+            <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 12px;" title="本系统接口需要访问令牌（X-Api-Token）。令牌保存在服务端 data/token.txt，首次启动时已打印到控制台。"></el-alert>
+            <el-input v-model="token.input" type="password" show-password placeholder="请输入访问令牌" @keyup.enter.native="saveToken"></el-input>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="token.dialogVisible = false">取 消</el-button>
+                <el-button type="primary" @click="saveToken">保存并重试</el-button>
+            </span>
+        </el-dialog>
+        {% endraw %}
+    </div>
+
+    <!-- 引入本地静态资源 -->
+    <script src="/static/js/vue.min.js"></script>
+    <script src="/static/js/element-ui.js"></script>
+    <script src="/static/js/axios.min.js"></script>
+
+    <script>
+        // ==================== axios 全局拦截器 ====================
+        var ERR_TEXT = {1:'未授权', 2:'参数错误', 3:'配置缺失', 4:'任务不存在', 5:'上传校验失败', 6:'服务繁忙'};
+        var __tokenDialogOpen = false;
+        var __retryRequest = null;
+        function triggerTokenDialog() {
+            if (__tokenDialogOpen) { return; }
+            __tokenDialogOpen = true;
+            if (window.__app) { window.__app.openTokenDialog(); }
+        }
+        axios.interceptors.request.use(function (config) {
+            var t = localStorage.getItem('api_token');
+            if (t) { config.headers['X-Api-Token'] = t; }
+            return config;
+        }, function (error) { return Promise.reject(error); });
+        axios.interceptors.response.use(function (resp) {
+            if (resp.config.responseType === 'blob') { return resp; }
+            var body = resp.data;
+            if (body && typeof body === 'object' && 'code' in body && body.code !== 0) {
+                var msg = ERR_TEXT[body.code] || body.message || '请求失败';
+                if (body.code === 1) { triggerTokenDialog(); }
+                else if (window.__app) { window.__app.$message.error(msg); }
+                return Promise.reject(new Error(msg));
+            }
+            return resp;
+        }, function (error) {
+            var status = error.response ? error.response.status : 0;
+            if (status === 401) {
+                triggerTokenDialog();
+                var url = error.config ? error.config.url : '';
+                var m = error.config ? error.config.method : '';
+                var isUpload = /\/configs\/upload$/.test(url) || (/\/uploads$/.test(url) && m === 'post');
+                if (!isUpload && error.config) { __retryRequest = error; }
+            } else if (window.__app) {
+                if (status) { window.__app.$message.error('请求失败（HTTP ' + status + '）'); }
+                else { window.__app.$message.error('网络错误，请确认服务已启动'); }
+            }
+            return Promise.reject(error);
+        });
+
+        new Vue({
+            el: '#app',
+            data: {
+                // 视图域
+                view: { active: 'overview' },
+                // 配置表域
+                cfg: {
+                    types: [
+                        { type: 'cost',    name: '成本表',         required: true,  multiple: false },
+                        { type: 'link',    name: '产品链接汇总表', required: true,  multiple: false },
+                        { type: 'promo',   name: '推广报表',       required: true,  multiple: true },
+                        { type: 'subsidy', name: '官补映射表',     required: false, multiple: false },
+                        { type: 'sort',    name: '产品排序表',     required: false, multiple: false }
+                    ],
+                    data: {},        // GET /api/configs 原始返回 {type: {current, versions}}
+                    selection: {},   // {cost: 2, promo: [1,3], ...} 参与任务的版本
+                    uploading: {}    // 各类型上传中标记
+                },
+                // 订单文件域
+                upload: { files: [], uploading: false },
+                // 任务/向导域
+                job: {
+                    step: 1, submitting: false, all: [], statusFilter: '',
+                    form: { order_files: [], configs: {}, cookie: '', thread_count: 3, enable_tax: true, exclude_ids: [] }
+                },
+                // 日志/轮询域
+                logs: { detail: null, visible: false, detailId: null, logs: [], since: 0, failCount: 0, timer: null, autoScroll: true },
+                // 令牌域
+                token: { dialogVisible: false, input: '', saved: localStorage.getItem('api_token') || '' }
+            },
+            computed: {
+                // 摘要页配置行
+                summaryConfigLines() {
+                    var lines = [], self = this;
+                    this.cfg.types.forEach(function (t) {
+                        var sel = self.cfg.selection[t.type];
+                        var missing = sel === null || sel === undefined || (Array.isArray(sel) && sel.length === 0);
+                        var text = t.name + '：' + (missing ? ('未选择' + (t.required ? '（必填）' : '（可选）'))
+                            : (t.type === 'promo' ? sel.map(function (v) { return 'v' + v; }).join('、') : 'v' + sel));
+                        lines.push({ text: text, missing: missing });
+                    });
+                    return lines;
+                },
+                summaryFiles() {
+                    var self = this;
+                    return this.upload.files.filter(function (f) { return self.job.form.order_files.indexOf(f.id) >= 0; });
+                }
+            },
+            mounted() {
+                window.__app = this;
+                this.loadJobs().then(() => this.syncPolling());
+                this.loadConfigs();
+                this.loadUploads();
+                var self = this;
+                document.addEventListener('visibilitychange', function () {
+                    if (document.hidden) { self.stopPolling(); }
+                    else { self.syncPolling(); }
+                });
+            },
+            methods: {
+                // ==================== 视图切换 ====================
+                handleMenuSelect(index) { this.goView(index); },
+                goView(v) {
+                    this.view.active = v;
+                    if (v === 'overview') { this.loadJobs().then(() => this.syncPolling()); }
+                    else if (v === 'create') { this.loadConfigs(); this.loadUploads(); this.syncPolling(); }
+                    else { this.loadJobs(); this.syncPolling(); }
+                },
+                refreshOverview() { this.loadJobs().then(() => this.syncPolling()); this.$message.success('已刷新'); },
+
+                // ==================== 配置表 ====================
+                loadConfigs() {
+                    var self = this;
+                    return axios.get('/api/configs').then(function (res) {
+                        self.cfg.data = res.data.data || {};
+                        self.initSelection();
+                    }).catch(function () {});
+                },
+                initSelection() {
+                    var self = this, sel = {};
+                    this.cfg.types.forEach(function (t) {
+                        var info = self.cfg.data[t.type] || { current: null, versions: [] };
+                        var vs = (info.versions || []).map(function (v) { return v.version; });
+                        var old = self.cfg.selection[t.type];
+                        if (t.type === 'promo') {
+                            sel[t.type] = (old && old.length) ? old.filter(function (v) { return vs.indexOf(v) >= 0; }) : vs.slice();
+                        } else {
+                            sel[t.type] = (old !== null && old !== undefined && vs.indexOf(old) >= 0) ? old : (info.current ? info.current.version : null);
+                        }
+                    });
+                    this.cfg.selection = sel;
+                },
+                typeInfo(type) { return this.cfg.types.find(function (t) { return t.type === type; }); },
+                typeVersions(type) { return (this.cfg.data[type] || {}).versions || []; },
+                typeHasConfig(type) { return !!(this.cfg.data[type] && this.cfg.data[type].current); },
+                typeCurrentVersion(type) { var c = this.cfg.data[type] && this.cfg.data[type].current; return c ? c.version : null; },
+                typeCurrentFilename(type) { var c = this.cfg.data[type] && this.cfg.data[type].current; return c ? c.filename : ''; },
+                typeCurrentTime(type) { var c = this.cfg.data[type] && this.cfg.data[type].current; return c ? c.uploaded_at : ''; },
+                typeCurrentSize(type) { var c = this.cfg.data[type] && this.cfg.data[type].current; return c ? c.size : 0; },
+                handleConfigUpload(type, options) {
+                    var self = this, fd = new FormData();
+                    fd.append('type', type);
+                    fd.append('file', options.file);
+                    this.$set(this.cfg.uploading, type, true);
+                    axios.post('/api/configs/upload', fd).then(function (res) {
+                        self.$message.success(self.typeInfo(type).name + ' 上传成功');
+                        self.loadConfigs();
+                        options.onSuccess(res.data);
+                    }).catch(function (err) { options.onError(err); })
+                      .finally(function () { self.$set(self.cfg.uploading, type, false); });
+                },
+                deleteConfig(type, version) {
+                    var self = this, name = this.typeInfo(type).name;
+                    this.$confirm('确认删除「' + name + '」v' + version + '？', '提示', { type: 'warning' }).then(function () {
+                        axios.delete('/api/configs', { params: { type: type, version: version } }).then(function () {
+                            self.$message.success('已删除');
+                            self.loadConfigs();
+                        }).catch(function () {});
+                    }).catch(function () {});
+                },
+
+                // ==================== 订单文件 ====================
+                loadUploads() {
+                    var self = this;
+                    return axios.get('/api/uploads').then(function (res) {
+                        self.upload.files = res.data.data || [];
+                        self.job.form.order_files = self.upload.files.map(function (f) { return f.id; });
+                    }).catch(function () {});
+                },
+                handleOrderUpload(options) {
+                    var self = this, fd = new FormData();
+                    fd.append('file', options.file);
+                    this.upload.uploading = true;
+                    axios.post('/api/uploads', fd).then(function (res) {
+                        var up = (res.data.data && res.data.data.uploaded) || [];
+                        self.$message.success('文件上传成功：' + (up[0] ? up[0].name : ''));
+                        self.loadUploads();
+                        options.onSuccess(res.data);
+                    }).catch(function (err) { options.onError(err); })
+                      .finally(function () { self.upload.uploading = false; });
+                },
+                deleteUpload(file) {
+                    var self = this;
+                    this.$confirm('确认删除文件「' + file.name + '」？', '提示', { type: 'warning' }).then(function () {
+                        axios.delete('/api/uploads/' + file.id).then(function () {
+                            self.$message.success('已删除');
+                            self.loadUploads();
+                        }).catch(function () {});
+                    }).catch(function () {});
+                },
+                formatSize(bytes) {
+                    if (bytes === null || bytes === undefined) { return '-'; }
+                    if (bytes < 1024) { return bytes + ' B'; }
+                    if (bytes < 1024 * 1024) { return (bytes / 1024).toFixed(1) + ' KB'; }
+                    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+                },
+
+                // ==================== 向导 ====================
+                nextStep() { if (this.stepValid()) { this.job.step++; } },
+                stepValid() {
+                    var s = this.job.step;
+                    if (s === 1) {
+                        var missing = [];
+                        this.cfg.types.forEach(function (t) {
+                            if (!t.required) { return; }
+                            var sel = this.cfg.selection[t.type];
+                            var empty = sel === null || sel === undefined || (Array.isArray(sel) && sel.length === 0);
+                            if (empty) { missing.push(t.name); }
+                        }, this);
+                        if (missing.length) { this.$message.warning('请先上传必填配置：' + missing.join('、')); return false; }
+                        return true;
+                    }
+                    if (s === 2) {
+                        if (!this.job.form.order_files.length) { this.$message.warning('请至少上传并保留一个订单文件'); return false; }
+                        return true;
+                    }
+                    if (s === 3) {
+                        if (!(this.job.form.cookie || '').trim()) { this.$message.warning('请填写 Cookie'); return false; }
+                        return true;
+                    }
+                    return true;
+                },
+                resetWizard() {
+                    this.job.step = 1;
+                    this.job.form.cookie = '';
+                    this.job.form.thread_count = 3;
+                    this.job.form.enable_tax = true;
+                    this.job.form.exclude_ids = [];
+                },
+                async submitJob() {
+                    if (!this.stepValid() || this.job.submitting) { return; }
+                    this.job.submitting = true;
+                    var configs = {}, self = this;
+                    this.cfg.types.forEach(function (t) {
+                        var sel = self.cfg.selection[t.type];
+                        if (sel === null || sel === undefined || (Array.isArray(sel) && sel.length === 0)) { return; }
+                        configs[t.type] = sel;
+                    });
+                    try {
+                        var res = await axios.post('/api/jobs', {
+                            order_files: this.job.form.order_files.slice(),
+                            configs: configs,
+                            cookie: this.job.form.cookie.trim(),
+                            thread_count: this.job.form.thread_count,
+                            enable_tax: this.job.form.enable_tax,
+                            exclude_ids: this.job.form.exclude_ids.join(',')
+                        });
+                        var taskId = res.data.data.task_id;
+                        this.$message.success('任务已创建：' + taskId);
+                        this.resetWizard();
+                        this.view.active = 'overview';
+                        await this.loadJobs();
+                        this.syncPolling();
+                        var created = this.job.all.find(function (t) { return t.id === taskId; });
+                        if (created) { this.openDetail(created); }
+                    } catch (e) {
+                        // 错误信息由拦截器统一提示
+                    } finally {
+                        this.job.submitting = false;
+                    }
+                },
+
+                // ==================== 任务列表/详情 ====================
+                loadJobs() {
+                    var self = this;
+                    return axios.get('/api/jobs').then(function (res) {
+                        self.job.all = res.data.data || [];
+                    }).catch(function () {});
+                },
+                runningTask() { return this.job.all.find(function (t) { return t.status === 'running' || t.status === 'pending'; }) || null; },
+                recentTasks() { return this.job.all.slice(0, 5); },
+                statusFilteredHistory() {
+                    var f = this.job.statusFilter;
+                    return f ? this.job.all.filter(function (t) { return t.status === f; }) : this.job.all;
+                },
+                cardTask() {
+                    var d = this.logs.detail;
+                    if (d && (d.status === 'running' || d.status === 'pending')) { return d; }
+                    return this.runningTask() || this.logs.detail;
+                },
+                progressPercent(t) { return Math.max(0, Math.min(100, Math.round((t && t.progress) || 0))); },
+                statusText(s) { return { pending: '排队中', running: '运行中', done: '已完成', error: '失败' }[s] || s; },
+                statusTagType(s) { return { pending: 'info', running: 'primary', done: 'success', error: 'danger' }[s] || 'info'; },
+                _fmtMs(ms) {
+                    var sec = Math.floor(ms / 1000);
+                    if (sec < 60) { return sec + ' 秒'; }
+                    if (sec < 3600) { return Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒'; }
+                    return Math.floor(sec / 3600) + ' 时 ' + Math.floor((sec % 3600) / 60) + ' 分';
+                },
+                durationText(t) {
+                    if (!t || !t.created_at || !t.finished_at) { return '—'; }
+                    var ms = new Date(t.finished_at).getTime() - new Date(t.created_at).getTime();
+                    return (isFinite(ms) && ms >= 0) ? this._fmtMs(ms) : '—';
+                },
+                elapsedText(t) {
+                    if (!t || !t.created_at) { return ''; }
+                    var ms = Date.now() - new Date(t.created_at).getTime();
+                    return (isFinite(ms) && ms >= 0) ? this._fmtMs(ms) : '';
+                },
+                resultFiles(t) {
+                    if (!t) { return []; }
+                    var r = t.result_files !== undefined ? t.result_files : t.result_files_json;
+                    if (Array.isArray(r)) { return r; }
+                    if (typeof r === 'string' && r) {
+                        try { return JSON.parse(r); } catch (e) { return []; }
+                    }
+                    return [];
+                },
+                openDetail(task) {
+                    if (!task) { return; }
+                    if (this.logs.detailId !== task.id) { this.logs.logs = []; this.logs.since = 0; }
+                    this.logs.detail = task;
+                    this.logs.visible = true;
+                    this.syncPolling();
+                },
+                closeDetail() { this.logs.visible = false; this.syncPolling(); },
+                rerunJob(task) {
+                    var self = this;
+                    this.$confirm('确认重跑任务「' + task.id + '」？将使用原参数创建新任务。', '提示', { type: 'warning' }).then(function () {
+                        axios.post('/api/jobs/' + task.id + '/rerun').then(function (res) {
+                            var newId = res.data.data.task_id;
+                            self.$message.success('已创建新任务：' + newId);
+                            self.goView('overview');
+                            self.openDetail(self.job.all.find(function (t) { return t.id === newId; }) || { id: newId });
+                        }).catch(function () {});
+                    }).catch(function () {});
+                },
+                deleteJob(task) {
+                    var self = this;
+                    this.$confirm('确认删除任务「' + task.id + '」？删除后不可恢复。', '提示', { type: 'warning' }).then(function () {
+                        axios.delete('/api/jobs/' + task.id).then(function () {
+                            self.$message.success('已删除');
+                            self.loadJobs();
+                        }).catch(function () {});
+                    }).catch(function () {});
+                },
+                async downloadResult(task, filename) {
+                    try {
+                        var res = await axios.get('/api/jobs/' + task.id + '/download/' + encodeURIComponent(filename), { responseType: 'blob' });
+                        var blob = res.data;
+                        if (blob.type && blob.type.indexOf('application/json') >= 0) {
+                            var text = await blob.text();
+                            try { this.$message.error(JSON.parse(text).message || '下载失败'); }
+                            catch (e) { this.$message.error('下载失败'); }
+                            return;
+                        }
+                        var url = URL.createObjectURL(blob);
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    } catch (e) {
+                        // 服务端错误是 JSON blob（HTTP 4xx），解析出中文提示
+                        var bd = e.response && e.response.data;
+                        if (bd && bd.text) {
+                            try {
+                                var j = JSON.parse(await bd.text());
+                                if (j && j.message) { this.$message.error(j.message); return; }
+                            } catch (e2) {}
+                        }
+                        /* 其余错误由拦截器提示 */
+                    }
+                },
+
+                // ==================== 日志轮询 ====================
+                startPolling(id, taskSnap) {
+                    if (this.logs.detailId !== id) {
+                        this.logs.detailId = id;
+                        this.logs.logs = [];
+                        this.logs.since = 0;
+                        this.logs.failCount = 0;
+                        if (taskSnap) { this.logs.detail = taskSnap; }
+                        this.fetchDetail();
+                        return;
+                    }
+                    this.scheduleNext();
+                },
+                stopPolling() {
+                    this.logs.detailId = null;
+                    if (this.logs.timer) { clearTimeout(this.logs.timer); this.logs.timer = null; }
+                },
+                syncPolling() {
+                    // 详情弹层打开时优先轮询弹层任务
+                    if (this.logs.visible && this.logs.detail) {
+                        var d = this.logs.detail;
+                        if (d.status === 'done' || d.status === 'error') {
+                            // 终态任务：一次性拉全量日志后由 fetchDetail 自行停止
+                            if (!this.logs.detailId) { this.startPolling(d.id, d); }
+                            return;
+                        }
+                        if (!this.logs.detailId) { this.startPolling(d.id, d); }
+                        return;
+                    }
+                    if (this.view.active === 'overview') {
+                        var r = this.runningTask();
+                        if (r) { this.startPolling(r.id, r); return; }
+                    }
+                    this.stopPolling();
+                },
+                scheduleNext() {
+                    // 连续3次失败后指数退避 2→4→8→16s
+                    var delay = this.logs.failCount >= 3 ? Math.min(2000 * Math.pow(2, this.logs.failCount - 2), 16000) : 2000;
+                    var self = this;
+                    if (this.logs.timer) { clearTimeout(this.logs.timer); }
+                    this.logs.timer = setTimeout(function () { self.fetchDetail(); }, delay);
+                },
+                async fetchDetail() {
+                    var id = this.logs.detailId;
+                    if (!id) { return; }
+                    try {
+                        var res = await axios.get('/api/jobs/' + id, { params: { since: this.logs.since } });
+                        if (this.logs.detailId !== id) { return; }   // 目标已切换，丢弃过期响应
+                        var payload = res.data.data || {};
+                        var task = payload.task || payload;
+                        var logs = payload.logs || task.logs || [];
+                        this.logs.detail = task;
+                        var idx = this.job.all.findIndex(function (t) { return t.id === id; });
+                        if (idx >= 0) { this.$set(this.job.all, idx, task); }
+                        if (logs.length) {
+                            this.logs.logs = this.logs.logs.concat(logs);
+                            this.logs.since += logs.length;
+                            if (this.logs.logs.length > 2000) { this.logs.logs = this.logs.logs.slice(-2000); }
+                        }
+                        this.logs.failCount = 0;
+                        this.scrollLogs();
+                        if (task.status === 'done' || task.status === 'error') {
+                            this.stopPolling();
+                            this.loadJobs();
+                            return;
+                        }
+                        this.scheduleNext();
+                    } catch (e) {
+                        if (this.logs.detailId !== id) { return; }
+                        var code = e.response && e.response.data ? e.response.data.code : null;
+                        if (code === 4) { this.stopPolling(); return; }  // 任务已删除
+                        this.logs.failCount++;
+                        this.scheduleNext();
+                    }
+                },
+                scrollLogs() {
+                    var self = this;
+                    if (!this.logs.autoScroll) { return; }
+                    this.$nextTick(function () {
+                        ['cardLogBox', 'detailLogBox'].forEach(function (ref) {
+                            var el = self.$refs[ref];
+                            if (el) { el.scrollTop = el.scrollHeight; }
+                        });
+                    });
+                },
+
+                // ==================== 令牌 ====================
+                openTokenDialog() { this.token.input = this.token.saved; this.token.dialogVisible = true; },
+                tokenDialogClosed() { __tokenDialogOpen = false; },
+                saveToken() {
+                    var t = (this.token.input || '').trim();
+                    if (!t) { this.$message.warning('请输入访问令牌'); return; }
+                    localStorage.setItem('api_token', t);
+                    this.token.saved = t;
+                    this.token.dialogVisible = false;
+                    this.$message.success('令牌已保存');
+                    if (__retryRequest) {
+                        var req = __retryRequest;
+                        __retryRequest = null;
+                        axios(req.config).catch(function () {});
+                    }
+                },
+
+                // ==================== 其它 ====================
+                maskCookie(c) {
+                    if (!c) { return ''; }
+                    return c.length <= 8 ? c.slice(0, 2) + '****' + c.slice(-2) : c.slice(0, 4) + '****' + c.slice(-4);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

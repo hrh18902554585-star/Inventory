@@ -27,3 +27,20 @@ inventory_cache.json
 
 # 环境变量
 .env
+
+# ===== profit_service 运行时数据 (app.db/tax_cache.json/uploads/configs/outputs/logs/tasks/token.txt/cookie.txt/stats.json) =====
+profit_service/data/
+profit_service/token.txt
+
+# ===== 测试生成物 =====
+tests/_smoke_out/
+tests/_dbg/
+tests/_dbg_out/
+tests/fixtures/
+
+# ===== 敏感文件 (Cookie) =====
+/cookie.txt
+flask_admin/cookie.txt
+
+# 部分下载/传输文件
+*.part

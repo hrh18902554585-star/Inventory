@@ -7,6 +7,9 @@
 4. [R2 修复] 多店铺时销售计划登记表包含所有店铺数据
 5. 空输入（无有效订单）时抛 EngineError
 6. 多天数据生成合并文件
+
+pytest 兼容：test_* 函数可被 pytest 收集，session 级 autouse fixture 先生成 fixtures；
+check 失败在 pytest 下抛 AssertionError（独立运行 __main__ 行为不变）。
 """
 import csv
 import os
@@ -16,6 +19,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "profit_service"))
 
 import openpyxl
+import pytest
 
 from engine import EngineError, ProfitEngine
 
@@ -27,6 +31,13 @@ PASS = 0
 FAIL = 0
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _gen_smoke_fixtures():
+    """pytest 收集运行前生成 fixtures（等价独立运行 main() 中的 gen_fixtures()）"""
+    gen_fixtures()
+    yield
+
+
 def check(name, cond, detail=""):
     global PASS, FAIL
     if cond:
@@ -35,6 +46,8 @@ def check(name, cond, detail=""):
     else:
         FAIL += 1
         print(f"  [FAIL] {name} {detail}")
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            raise AssertionError(f"{name} {detail}")
 
 
 # ---------- fixture 生成 ----------
